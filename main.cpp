@@ -5,8 +5,11 @@
 #include <vector>
 #include <stdexcept>
 #include <thread>
+#include <math.h>
+#include <matplot/matplot.h>
 
 using namespace std;
+using namespace matplot;
 
 int heaviside(const double x)
 {
@@ -51,6 +54,19 @@ public:
         ONLINE,
         BATCH
     };
+
+    vector<double> get_weights()
+    {
+        return this->weights;
+    }
+
+    Perceptron()
+    {
+        this->weights = {};
+        this->eta = 1.0;
+        this->biais = 1.0;
+        this->learn_data = {};
+    }
 
     Perceptron(const vector<double>& weights, const float eta, const double biais,
                const map<vector<int>, int>& learn_data) :
@@ -135,11 +151,11 @@ public:
     }
 
 private:
-    bool learn_incremental()
+    size_t learn_incremental(const size_t max_epochs)
     {
-        for (size_t epoch = 0; epoch < 1000; epoch++)
+        for (size_t epoch = 0; epoch < max_epochs; epoch++)
         {
-            if (verify()) return true;
+            if (verify()) return epoch;
             for (const auto& [fst, snd] : this->learn_data)
             {
                 auto x = fst;
@@ -157,14 +173,14 @@ private:
                 }
             }
         }
-        return verify();
+        return verify() ? max_epochs : -1;
     }
 
-    bool learn_batch()
+    size_t learn_batch(const size_t max_epochs)
     {
-        for (size_t epoch = 0; epoch < 1000; epoch++)
+        for (size_t epoch = 0; epoch < max_epochs; epoch++)
         {
-            if (verify()) return true;
+            if (verify()) return epoch;
             vector delta(this->weights.size(), 0.0);
             double delta_biais = 0;
 
@@ -188,30 +204,30 @@ private:
             this->weights = add(this->weights, delta);
             this->biais += delta_biais;
         }
-        return verify();
+        return verify() ? max_epochs : -1;
     }
 
 public:
-    bool learn(const LearningType type_)
+    size_t learn(const LearningType type_, const size_t max_epochs = 1000)
     {
         switch (type_)
         {
         case BATCH:
-            return learn_batch();
+            return learn_batch(max_epochs);
         default:
-            return learn_incremental();
+            return learn_incremental(max_epochs);
         }
     }
 };
 
-map<vector<int>, int> create_prof_dataset(const int n, const int p)
+map<vector<int>, int> create_prof_dataset(const int n, const int p, Perceptron prof)
 {
     map<vector<int>, int> ls_dataset = {};
 
     random_device rd;
     mt19937 gen(rd());
 
-    const auto prof = Perceptron(n + 1, 0.5, 0.0);
+    prof = Perceptron(n + 1, 0.5, 0.0);
 
     for (int i = 0; i < p; i++)
     {
@@ -226,20 +242,48 @@ map<vector<int>, int> create_prof_dataset(const int n, const int p)
     return ls_dataset;
 }
 
-vector<Perceptron> learn_all(const map<vector<int>, int>& dataset, const int n, Perceptron::LearningType type)
+struct Result
+{
+    Perceptron p;
+    size_t iterations;
+    double recouvrement;
+};
+
+double recouvrement(const vector<double>& a, const vector<double>& b)
+{
+    if (a.size() != b.size()) throw std::invalid_argument("Wrong number of input sizes");
+
+    double ww = 0;
+
+    for (int i = 0; i < a.size(); i++) ww += a[i] * b[i];
+
+    double norm_a = 0;
+    double norm_b = 0;
+
+    for (int i = 0; i < a.size(); i++)
+    {
+        norm_a += a[i] * a[i];
+        norm_b += b[i] * b[i];
+    }
+
+    return cos(ww / (sqrt(norm_a) * sqrt(norm_b)));
+}
+
+vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, Perceptron prof,
+                         Perceptron::LearningType type = Perceptron::ONLINE)
 {
     vector<thread> threads;
     threads.reserve(20);
 
-    vector<Perceptron> results;
+    vector<Result> results;
 
     for (int i = 0; i < 20; i++)
     {
         threads.emplace_back([&, type]()
         {
             auto eleve = Perceptron(n, 0.5, 0.0, dataset);
-            eleve.learn(type);
-            results.push_back(eleve);
+            size_t it = eleve.learn(type);
+            results.push_back({eleve, it, recouvrement(prof.get_weights(), eleve.get_weights())});
         });
     }
 
@@ -294,6 +338,65 @@ int main()
 
     // Exercice 2
     // voir la fonction learning_all
+
+    // Exercice 3
+
+    // TODO eta
+
+    vector ns = {2, 10, 100, 500, 1000, 5000};
+    vector ps = {10, 100, 200, 500, 1000};
+
+    map<pair<int, int>, vector<Result>> online_results;
+    map<pair<int, int>, vector<Result>> batch_results;
+
+    auto prof = Perceptron();
+
+    for (auto n : ns)
+    {
+        for (auto p : ps)
+        {
+            auto ds = create_prof_dataset(n, p, prof);
+
+            // ONLINE
+            online_results.emplace(pair(n, p), learn_all(ds, n, prof));
+            // BATCH
+            batch_results.emplace(pair(n, p), learn_all(ds, n, prof, Perceptron::BATCH));
+        }
+    }
+
+    // compute averages
+    // (n, p) -> (it, recouvrement)
+    map<pair<int, int>, pair<double, double>> online_averages;
+    map<pair<int, int>, pair<double, double>> batch_averages;
+
+    for (auto n : ns)
+    {
+        for (auto p : ps)
+        {
+            double reco_o = 0;
+            double it_o = 0;
+            double reco_b = 0;
+            double it_b = 0;
+
+            for (auto r : online_results[pair(n, p)])
+            {
+                reco_o += r.recouvrement;
+                it_o += r.iterations;
+            }
+
+            online_averages.emplace(pair(n, p), pair(it_o / 20, reco_o / 20));
+
+            for (auto r : batch_results[pair(n, p)])
+            {
+                reco_b += r.recouvrement;
+                it_b += r.iterations;
+            }
+
+            batch_averages.emplace(pair(n, p), pair(it_b / 20, reco_b / 20));
+        }
+    }
+
+    // generating plots
 
 
     return 0;
