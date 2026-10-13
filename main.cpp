@@ -4,6 +4,7 @@
 #include <random>
 #include <vector>
 #include <stdexcept>
+#include <thread>
 
 using namespace std;
 
@@ -45,7 +46,13 @@ class Perceptron
     map<vector<int>, int> learn_data;
 
 public:
-    Perceptron(const vector<double>& weights, const float eta, double biais,
+    enum LearningType
+    {
+        ONLINE,
+        BATCH
+    };
+
+    Perceptron(const vector<double>& weights, const float eta, const double biais,
                const map<vector<int>, int>& learn_data) :
         learn_data(learn_data)
     {
@@ -62,14 +69,39 @@ public:
         this->learn_data = {};
     }
 
-    Perceptron(int n, const float eta, double biais,
+    Perceptron(const int n, const float eta, const double biais,
                const map<vector<int>, int>& learn_data) :
         learn_data(learn_data)
     {
-        const vector init(n, 0.0);
+        vector<double> init(n);
+
+        random_device rd;
+        mt19937 gen(rd());
+
+        uniform_real_distribution weight_dist(-1.0, 1.0);
+
+        for (double& w : init) { w = weight_dist(gen); }
+
         this->weights = init;
         this->eta = eta;
         this->biais = biais;
+    }
+
+    Perceptron(const int n, const float eta, const double biais)
+    {
+        vector<double> init(n);
+
+        random_device rd;
+        mt19937 gen(rd());
+
+        uniform_real_distribution weight_dist(-1.0, 1.0);
+
+        for (double& w : init) { w = weight_dist(gen); }
+
+        this->weights = init;
+        this->eta = eta;
+        this->biais = biais;
+        this->learn_data = {};
     }
 
     [[nodiscard]] int output(const vector<int>& input) const
@@ -102,6 +134,7 @@ public:
         return false;
     }
 
+private:
     bool learn_incremental()
     {
         for (size_t epoch = 0; epoch < 1000; epoch++)
@@ -157,63 +190,28 @@ public:
         }
         return verify();
     }
+
+public:
+    bool learn(const LearningType type_)
+    {
+        switch (type_)
+        {
+        case BATCH:
+            return learn_batch();
+        default:
+            return learn_incremental();
+        }
+    }
 };
 
-int main()
+map<vector<int>, int> create_prof_dataset(const int n, const int p)
 {
-    // Exercice 0 avec le perceptron basique
-
-    // testing AND
-    map<vector<int>, int> input_and = {
-        {{0, 0}, 0},
-        {{0, 1}, 0},
-        {{1, 0}, 0},
-        {{1, 1}, 1},
-    };
-
-    Perceptron and_(2, 0.5, 0.0, input_and);
-    and_.learn_batch();
-
-    cout << and_.output({0, 1}) << endl;
-
-    // testing OR
-    map<vector<int>, int> input_or = {
-        {{0, 0}, 0},
-        {{0, 1}, 1},
-        {{1, 0}, 1},
-        {{1, 1}, 1},
-    };
-    Perceptron or_(2, 0.5, 0.0, input_or);
-    or_.learn_batch();
-    cout << or_.output({0, 1}) << endl;
-
-    //testing XOR
-    map<vector<int>, int> input_xor = {
-        {{0, 0}, 0},
-        {{0, 1}, 1},
-        {{1, 0}, 1},
-        {{1, 1}, 0},
-    };
-    Perceptron xor_(2, 0.5, 0.0, input_xor);
-    xor_.learn_batch();
-    cout << xor_.output({0, 1}) << endl;
-
-    // Exercice 1 avec perceptron professeur
-
-    int n = 2;
-    int p = 15;
-
     map<vector<int>, int> ls_dataset = {};
-    vector<double> prof_weights;
-
-    double prof_biais = 0.5;
-    prof_weights.push_back(prof_biais);
 
     random_device rd;
     mt19937 gen(rd());
 
-    for (int i = 0; i < n; i++) prof_weights.push_back(gen() % 2);
-    auto prof = Perceptron(prof_weights, 0.5, 0.0);
+    const auto prof = Perceptron(n + 1, 0.5, 0.0);
 
     for (int i = 0; i < p; i++)
     {
@@ -225,9 +223,77 @@ int main()
         }
         ls_dataset.emplace(vec, prof.output(vec));
     }
+    return ls_dataset;
+}
+
+vector<Perceptron> learn_all(const map<vector<int>, int>& dataset, const int n, Perceptron::LearningType type)
+{
+    vector<thread> threads;
+    threads.reserve(20);
+
+    vector<Perceptron> results;
+
+    for (int i = 0; i < 20; i++)
+    {
+        threads.emplace_back([&, type]()
+        {
+            auto eleve = Perceptron(n, 0.5, 0.0, dataset);
+            eleve.learn(type);
+            results.push_back(eleve);
+        });
+    }
+
+    for (thread& t : threads) t.join();
+
+    return results;
+}
+
+int main()
+{
+    // Exercice 0 avec le perceptron basique
+
+    cout << "Question 0" << endl;
+
+    // testing AND
+    const map<vector<int>, int> input_and = {
+        {{0, 0}, 0},
+        {{0, 1}, 0},
+        {{1, 0}, 0},
+        {{1, 1}, 1},
+    };
+
+    Perceptron and_(2, 0.5, 0.0, input_and);
+    and_.learn(Perceptron::BATCH);
+
+    cout << and_.output({0, 1}) << endl;
+
+    // testing OR
+    const map<vector<int>, int> input_or = {
+        {{0, 0}, 0},
+        {{0, 1}, 1},
+        {{1, 0}, 1},
+        {{1, 1}, 1},
+    };
+    Perceptron or_(2, 0.5, 0.0, input_or);
+    or_.learn(Perceptron::BATCH);
+    cout << or_.output({0, 1}) << endl;
+
+    //testing XOR
+    const map<vector<int>, int> input_xor = {
+        {{0, 0}, 0},
+        {{0, 1}, 1},
+        {{1, 0}, 1},
+        {{1, 1}, 0},
+    };
+    Perceptron xor_(2, 0.5, 0.0, input_xor);
+    xor_.learn(Perceptron::BATCH);
+    cout << xor_.output({0, 1}) << endl;
+
+    // Exercice 1 avec perceptron professeur
+    // voir la fonction create_prof_dataset
 
     // Exercice 2
-
+    // voir la fonction learning_all
 
 
     return 0;
