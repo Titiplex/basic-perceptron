@@ -1,6 +1,7 @@
 #include <iostream>
 #include <ranges>
 #include <map>
+#include <random>
 #include <vector>
 #include <stdexcept>
 
@@ -53,6 +54,14 @@ public:
         this->biais = biais;
     }
 
+    Perceptron(const vector<double>& weights, const float eta, double biais)
+    {
+        this->weights = weights;
+        this->eta = eta;
+        this->biais = biais;
+        this->learn_data = {};
+    }
+
     Perceptron(int n, const float eta, double biais,
                const map<vector<int>, int>& learn_data) :
         learn_data(learn_data)
@@ -102,11 +111,10 @@ public:
             {
                 auto x = fst;
                 const int y = this->output(fst);
-                const int t = snd;
 
-                if (y != t)
+                if (const int t = snd; y != t)
                 {
-                    vector delta(this->weights.size(), 0.0);
+                    vector<double> delta(this->weights.size());
                     for (const auto x_prime : x)
                     {
                         delta.push_back(this->eta * static_cast<float>(t - y) * static_cast<float>(x_prime));
@@ -131,9 +139,8 @@ public:
             {
                 auto x = fst;
                 const int y = this->output(fst);
-                const int t = snd;
 
-                if (y != t)
+                if (const int t = snd; y != t)
                 {
                     vector<double> delta_local;
                     for (const auto x_prime : x)
@@ -154,6 +161,8 @@ public:
 
 int main()
 {
+    // Exercice 0 avec le perceptron basique
+
     // testing AND
     map<vector<int>, int> input_and = {
         {{0, 0}, 0},
@@ -188,6 +197,38 @@ int main()
     Perceptron xor_(2, 0.5, 0.0, input_xor);
     xor_.learn_batch();
     cout << xor_.output({0, 1}) << endl;
+
+    // Exercice 1 avec perceptron professeur
+
+    int n = 2;
+    int p = 15;
+
+    map<vector<int>, int> ls_dataset = {};
+    vector<double> prof_weights;
+
+    double prof_biais = 0.5;
+    prof_weights.push_back(prof_biais);
+
+    random_device rd;
+    mt19937 gen(rd());
+
+    for (int i = 0; i < n; i++) prof_weights.push_back(gen() % 2);
+    auto prof = Perceptron(prof_weights, 0.5, 0.0);
+
+    for (int i = 0; i < p; i++)
+    {
+        vector<int> vec;
+        vec.push_back(1);
+        for (int j = 0; j < n; j++)
+        {
+            vec.push_back(static_cast<int>(gen()) % 2);
+        }
+        ls_dataset.emplace(vec, prof.output(vec));
+    }
+
+    // Exercice 2
+
+
 
     return 0;
 }
