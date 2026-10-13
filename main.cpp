@@ -93,10 +93,11 @@ public:
         return false;
     }
 
-    void learn_incremental()
+    bool learn_incremental()
     {
-        while (true)
+        for (size_t epoch = 0; epoch < 1000; epoch++)
         {
+            if (verify()) return true;
             for (const auto& [fst, snd] : this->learn_data)
             {
                 auto x = fst;
@@ -111,11 +112,11 @@ public:
                         delta.push_back(this->eta * static_cast<float>(t - y) * static_cast<float>(x_prime));
                     }
                     this->weights = add(this->weights, delta);
+                    this->biais += this->eta * static_cast<float>(t - y);
                 }
             }
-
-            if (verify()) break;
         }
+        return verify();
     }
 
     bool learn_batch()
@@ -124,6 +125,7 @@ public:
         {
             if (verify()) return true;
             vector delta(this->weights.size(), 0.0);
+            double delta_biais = 0;
 
             for (const auto& [fst, snd] : this->learn_data)
             {
@@ -139,11 +141,12 @@ public:
                         delta_local.push_back(this->eta * static_cast<float>(t - y) * static_cast<float>(x_prime));
                     }
                     delta = add(delta, delta_local);
+                    delta_biais += this->eta * static_cast<float>(t - y);
                 }
             }
 
             this->weights = add(this->weights, delta);
-            if (verify()) break;
+            this->biais += delta_biais;
         }
         return verify();
     }
