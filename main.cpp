@@ -433,7 +433,6 @@ void plot_results(
     filename << "plots/resultats_eta_" << eta;
 
     fig->save(filename.str() + ".png");
-    fig->save(filename.str() + ".pdf");
 
     // to visualize in the app :
     // show();
