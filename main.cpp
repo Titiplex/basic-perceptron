@@ -7,6 +7,10 @@
 #include <thread>
 #include <cmath>
 #include <matplot/matplot.h>
+#include <iomanip>
+#include <sstream>
+#include <string>
+#include <utility>
 
 using namespace std;
 using namespace matplot;
@@ -163,13 +167,11 @@ private:
 
                 if (const int t = snd; y != t)
                 {
-                    vector<double> delta(this->weights.size());
-                    for (const auto x_prime : x)
-                    {
-                        delta.push_back(this->eta * static_cast<float>(t - y) * static_cast<float>(x_prime));
-                    }
-                    this->weights = add(this->weights, delta);
-                    this->biais += this->eta * static_cast<float>(t - y);
+                    const double correction = this->eta * static_cast<float>(t - y);
+
+                    for (size_t i = 0; i < this->weights.size(); ++i)
+                        this->weights[i] += correction * x[i];
+                    this->biais += correction;
                 }
             }
         }
@@ -245,13 +247,13 @@ map<vector<int>, int> create_prof_dataset(const int n, const int p, Perceptron& 
 struct Result
 {
     Perceptron p;
-    size_t iterations;
-    double recouvrement;
+    size_t iterations{};
+    double recouvrement{};
 };
 
 double recouvrement(const vector<double>& a, const vector<double>& b)
 {
-    if (a.size() != b.size()) throw std::invalid_argument("Wrong number of input sizes");
+    if (a.size() != b.size()) throw invalid_argument("Wrong number of input sizes");
 
     double ww = 0;
 
@@ -265,6 +267,9 @@ double recouvrement(const vector<double>& a, const vector<double>& b)
         norm_a += a[i] * a[i];
         norm_b += b[i] * b[i];
     }
+
+    if (norm_a == 0.0 || norm_b == 0.0)
+        throw invalid_argument("Undefined : null vector");
 
     return cos(ww / (sqrt(norm_a) * sqrt(norm_b)));
 }
@@ -313,6 +318,114 @@ vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, Perc
     }
 
     return results;
+}
+
+using Results =
+map<pair<int, int>, pair<double, double>>;
+
+// one panel for each methode with it and r in each cell
+void plot_panel(
+    const Results& results,
+    int position,
+    const string& method,
+    double eta,
+    vector<int> ns,
+    vector<int> ps)
+{
+    // color set to track R
+    vector colors(
+        ps.size(), vector<double>(ns.size())
+    );
+
+    for (size_t row = 0; row < ps.size(); ++row)
+    {
+        for (size_t col = 0; col < ns.size(); ++col)
+        {
+            colors[row][col] =
+                results.at({ns[col], ps[row]}).second;
+        }
+    }
+
+    subplot(1, 2, position);
+
+    auto heatmap = matplot::heatmap(colors);
+    heatmap->always_hide_labels(true);
+
+    hold(on);
+
+    colormap({
+        {1.00, 0.95, 0.85},
+        {0.95, 0.95, 0.95},
+        {0.65, 0.85, 1.00}
+    });
+
+    caxis({-1.0, 1.0});
+    colorbar();
+    xticks({1, 2, 3, 4, 5, 6});
+    yticks({1, 2, 3, 4, 5});
+
+    xticklabels({"2", "10", "100", "500", "1000", "5000"});
+    yticklabels({"10", "100", "200", "500", "1000"});
+
+    xlabel("N");
+    ylabel("P");
+
+    ostringstream title;
+    title << method << " | eta = " << eta
+        << " | couleur = R moyen";
+    matplot::title(title.str());
+
+    for (size_t row = 0; row < ps.size(); ++row)
+    {
+        for (size_t col = 0; col < ns.size(); ++col)
+        {
+            const auto& [it, r] =
+                results.at({ns[col], ps[row]});
+
+            const auto x = static_cast<double>(col + 1);
+            const auto y = static_cast<double>(row + 1);
+
+            ostringstream it_label;
+            it_label << "IT=" << fixed
+                << setprecision(1) << it;
+
+            ostringstream r_label;
+            r_label << "R=" << fixed
+                << setprecision(3) << r;
+
+            // heatmaps vertical exis is reversed
+            // y - 0.15 above center
+            auto top = text(x, y - 0.15, it_label.str());
+            top->alignment(labels::center);
+            top->font_size(9);
+
+            auto bottom = text(x, y + 0.15, r_label.str());
+            bottom->alignment(labels::center);
+            bottom->font_size(9);
+        }
+    }
+
+    xlim({0.5, 6.5});
+    ylim({0.5, 5.5});
+
+    hold(off);
+}
+
+void plot_results(
+    const Results& batch_averages,
+    const Results& online_averages,
+    const double eta,
+    const vector<int>& ns,
+    const vector<int>& ps)
+{
+    const auto fig = figure(true);
+    fig->width(1500);
+    fig->height(650);
+
+    plot_panel(batch_averages, 0, "Batch", eta, ns, ps);
+    plot_panel(online_averages, 1, "Online", eta, ns, ps);
+
+    show();
 }
 
 int main()
@@ -369,16 +482,16 @@ int main()
         vector ns = {2, 10, 100, 500, 1000, 5000};
         vector ps = {10, 100, 200, 500, 1000};
 
-    map<pair<int, int>, vector<Result>> online_results;
-    map<pair<int, int>, vector<Result>> batch_results;
+        map<pair<int, int>, vector<Result>> online_results;
+        map<pair<int, int>, vector<Result>> batch_results;
 
-    auto prof = Perceptron();
+        auto prof = Perceptron();
 
-    for (auto n : ns)
-    {
-        for (auto p : ps)
+        for (auto n : ns)
         {
-            auto ds = create_prof_dataset(n, p, prof);
+            for (auto p : ps)
+            {
+                auto ds = create_prof_dataset(n, p, prof);
 
                 // ONLINE
                 online_results.emplace(pair(n, p), learn_all(ds, n, prof, eta, Perceptron::ONLINE));
@@ -387,19 +500,19 @@ int main()
             }
         }
 
-    // compute averages
-    // (n, p) -> (it, recouvrement)
-    map<pair<int, int>, pair<double, double>> online_averages;
-    map<pair<int, int>, pair<double, double>> batch_averages;
+        // compute averages
+        // (n, p) -> (it, recouvrement)
+        map<pair<int, int>, pair<double, double>> online_averages;
+        map<pair<int, int>, pair<double, double>> batch_averages;
 
-    for (auto n : ns)
-    {
-        for (auto p : ps)
+        for (auto n : ns)
         {
-            double reco_o = 0;
-            double it_o = 0;
-            double reco_b = 0;
-            double it_b = 0;
+            for (auto p : ps)
+            {
+                double reco_o = 0;
+                double it_o = 0;
+                double reco_b = 0;
+                double it_b = 0;
 
                 for (const auto& r : online_results[pair(n, p)])
                 {
@@ -407,7 +520,7 @@ int main()
                     it_o += r.iterations;
                 }
 
-            online_averages.emplace(pair(n, p), pair(it_o / 20, reco_o / 20));
+                online_averages.emplace(pair(n, p), pair(it_o / 20, reco_o / 20));
 
                 for (const auto& r : batch_results[pair(n, p)])
                 {
@@ -415,11 +528,13 @@ int main()
                     it_b += r.iterations;
                 }
 
-            batch_averages.emplace(pair(n, p), pair(it_b / 20, reco_b / 20));
+                batch_averages.emplace(pair(n, p), pair(it_b / 20, reco_b / 20));
+            }
         }
-    }
 
-    // generating plots
+        // generating plots
+        plot_results(batch_averages, online_averages, eta, ns, ps);
+    }
 
 
     return 0;
