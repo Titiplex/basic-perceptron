@@ -5,7 +5,7 @@
 #include <vector>
 #include <stdexcept>
 #include <thread>
-#include <math.h>
+#include <cmath>
 #include <matplot/matplot.h>
 
 using namespace std;
@@ -220,14 +220,14 @@ public:
     }
 };
 
-map<vector<int>, int> create_prof_dataset(const int n, const int p, Perceptron prof)
+map<vector<int>, int> create_prof_dataset(const int n, const int p, Perceptron& prof, const float eta = 0.5)
 {
     map<vector<int>, int> ls_dataset = {};
 
     random_device rd;
     mt19937 gen(rd());
 
-    prof = Perceptron(n + 1, 0.5, 0.0);
+    prof = Perceptron(n + 1, eta, 0.0);
 
     for (int i = 0; i < p; i++)
     {
@@ -269,25 +269,48 @@ double recouvrement(const vector<double>& a, const vector<double>& b)
     return cos(ww / (sqrt(norm_a) * sqrt(norm_b)));
 }
 
-vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, Perceptron prof,
+vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, Perceptron prof, const float eta,
                          Perceptron::LearningType type = Perceptron::ONLINE)
 {
     vector<thread> threads;
     threads.reserve(20);
 
-    vector<Result> results;
+    vector<Result> results(20);
+    vector<exception_ptr> errors(20);
+
+    const auto prof_weights = prof.get_weights();
 
     for (int i = 0; i < 20; i++)
     {
-        threads.emplace_back([&, type]()
+        threads.emplace_back([&, i, n, eta, type]()
         {
-            auto eleve = Perceptron(n, 0.5, 0.0, dataset);
-            size_t it = eleve.learn(type);
-            results.push_back({eleve, it, recouvrement(prof.get_weights(), eleve.get_weights())});
+            try
+            {
+                auto eleve = Perceptron(n + 1, eta, 0.0, dataset);
+                // ReSharper disable once CppDFAUnusedValue
+                // ReSharper disable once CppDFAUnreadVariable
+                const size_t it = eleve.learn(type);
+
+                const double r = recouvrement(
+                    prof_weights, eleve.get_weights()
+                );
+
+                results[i] = {eleve, it, r};
+            }
+            catch (...)
+            {
+                errors[i] = current_exception();
+            }
         });
     }
 
     for (thread& t : threads) t.join();
+
+    for (const auto& error : errors)
+    {
+        if (error)
+            rethrow_exception(error);
+    }
 
     return results;
 }
@@ -341,10 +364,10 @@ int main()
 
     // Exercice 3
 
-    // TODO eta
-
-    vector ns = {2, 10, 100, 500, 1000, 5000};
-    vector ps = {10, 100, 200, 500, 1000};
+    for (vector<float> etas = {0.5, 0.25, 0.05}; float eta : etas)
+    {
+        vector ns = {2, 10, 100, 500, 1000, 5000};
+        vector ps = {10, 100, 200, 500, 1000};
 
     map<pair<int, int>, vector<Result>> online_results;
     map<pair<int, int>, vector<Result>> batch_results;
@@ -357,12 +380,12 @@ int main()
         {
             auto ds = create_prof_dataset(n, p, prof);
 
-            // ONLINE
-            online_results.emplace(pair(n, p), learn_all(ds, n, prof));
-            // BATCH
-            batch_results.emplace(pair(n, p), learn_all(ds, n, prof, Perceptron::BATCH));
+                // ONLINE
+                online_results.emplace(pair(n, p), learn_all(ds, n, prof, eta, Perceptron::ONLINE));
+                // BATCH
+                batch_results.emplace(pair(n, p), learn_all(ds, n, prof, eta, Perceptron::BATCH));
+            }
         }
-    }
 
     // compute averages
     // (n, p) -> (it, recouvrement)
@@ -378,19 +401,19 @@ int main()
             double reco_b = 0;
             double it_b = 0;
 
-            for (auto r : online_results[pair(n, p)])
-            {
-                reco_o += r.recouvrement;
-                it_o += r.iterations;
-            }
+                for (const auto& r : online_results[pair(n, p)])
+                {
+                    reco_o += r.recouvrement;
+                    it_o += r.iterations;
+                }
 
             online_averages.emplace(pair(n, p), pair(it_o / 20, reco_o / 20));
 
-            for (auto r : batch_results[pair(n, p)])
-            {
-                reco_b += r.recouvrement;
-                it_b += r.iterations;
-            }
+                for (const auto& r : batch_results[pair(n, p)])
+                {
+                    reco_b += r.recouvrement;
+                    it_b += r.iterations;
+                }
 
             batch_averages.emplace(pair(n, p), pair(it_b / 20, reco_b / 20));
         }
