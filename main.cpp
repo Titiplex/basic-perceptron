@@ -418,18 +418,18 @@ using Times = map<pair<int, int>, double>;
 void plot_time_panel(
     const Times& times,
     int position,
-    const std::string& method,
+    const string& method,
     double eta,
-    const std::vector<int>& ns,
-    const std::vector<int>& ps,
+    const vector<int>& ns,
+    const vector<int>& ps,
     double max_seconds)
 {
-    std::vector colors(
-        ps.size(), std::vector<double>(ns.size())
+    vector colors(
+        ps.size(), vector<double>(ns.size())
     );
 
-    for (std::size_t row = 0; row < ps.size(); ++row)
-        for (std::size_t col = 0; col < ns.size(); ++col)
+    for (size_t row = 0; row < ps.size(); ++row)
+        for (size_t col = 0; col < ns.size(); ++col)
             colors[row][col] = times.at({ns[col], ps[row]});
 
     subplot(1, 2, position);
@@ -448,19 +448,19 @@ void plot_time_panel(
     caxis({0.0, max_seconds});
     colorbar();
 
-    std::vector<double> x_ticks, y_ticks;
-    std::vector<std::string> x_labels, y_labels;
+    vector<double> x_ticks, y_ticks;
+    vector<string> x_labels, y_labels;
 
-    for (std::size_t col = 0; col < ns.size(); ++col)
+    for (size_t col = 0; col < ns.size(); ++col)
     {
         x_ticks.push_back(static_cast<double>(col + 1));
-        x_labels.push_back(std::to_string(ns[col]));
+        x_labels.push_back(to_string(ns[col]));
     }
 
-    for (std::size_t row = 0; row < ps.size(); ++row)
+    for (size_t row = 0; row < ps.size(); ++row)
     {
         y_ticks.push_back(static_cast<double>(row + 1));
-        y_labels.push_back(std::to_string(ps[row]));
+        y_labels.push_back(to_string(ps[row]));
     }
 
     xticks(x_ticks);
@@ -471,17 +471,17 @@ void plot_time_panel(
     xlabel("N");
     ylabel("P");
 
-    std::ostringstream title;
+    ostringstream title;
     title << method << " | eta = " << eta
         << " | temps en secondes";
     matplot::title(title.str());
 
-    for (std::size_t row = 0; row < ps.size(); ++row)
+    for (size_t row = 0; row < ps.size(); ++row)
     {
-        for (std::size_t col = 0; col < ns.size(); ++col)
+        for (size_t col = 0; col < ns.size(); ++col)
         {
-            std::ostringstream label;
-            label << std::fixed << std::setprecision(3)
+            ostringstream label;
+            label << fixed << setprecision(3)
                 << colors[row][col] << " s";
 
             auto text = matplot::text(
@@ -515,9 +515,9 @@ void plot_results(
     plot_panel(batch_averages, 0, "Batch", eta, ns, ps);
     plot_panel(online_averages, 1, "Online", eta, ns, ps);
 
-    std::filesystem::create_directories("plots");
+    filesystem::create_directories("plots");
 
-    std::ostringstream filename;
+    ostringstream filename;
     filename << "plots/resultats_eta_" << eta;
 
     fig->save(filename.str() + ".png");
@@ -537,7 +537,7 @@ void plot_time_results(
 )
 {
     if (ns.size() < 2 || ps.size() < 2)
-        throw std::invalid_argument(
+        throw invalid_argument(
             "Ces heatmaps demandent au moins deux valeurs par axe."
         );
 
@@ -552,8 +552,8 @@ void plot_time_results(
                      online_times.at({n, p})
                  })
             {
-                if (!std::isfinite(t) || t < 0.0)
-                    throw std::invalid_argument("Temps invalide.");
+                if (!isfinite(t) || t < 0.0)
+                    throw invalid_argument("Temps invalide.");
 
                 max_seconds = std::max(max_seconds, t);
             }
@@ -569,9 +569,9 @@ void plot_time_results(
     plot_time_panel(batch_times, 0, "Batch", eta, ns, ps, max_seconds);
     plot_time_panel(online_times, 1, "Online", eta, ns, ps, max_seconds);
 
-    std::filesystem::create_directories("plots/time");
+    filesystem::create_directories("plots/time");
 
-    std::ostringstream filename;
+    ostringstream filename;
     filename << "plots/time/time_eta_" << eta;
 
     fig->save(filename.str() + ".png");
