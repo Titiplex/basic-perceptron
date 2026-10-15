@@ -12,6 +12,7 @@
 #include <string>
 #include <utility>
 #include <filesystem>
+#include <chrono>
 
 using namespace std;
 using namespace matplot;
@@ -489,6 +490,8 @@ int main()
 
     for (vector<float> etas = {0.5, 0.25, 0.05}; float eta : etas)
     {
+        auto start = chrono::steady_clock::now();
+
         vector ns = {2, 10, 100, 500, 1000, 5000};
         vector ps = {10, 100, 200, 500, 1000};
 
@@ -509,6 +512,12 @@ int main()
                 batch_results.emplace(pair(n, p), learn_all(ds, n, prof, eta, Perceptron::BATCH));
             }
         }
+
+        auto end = chrono::steady_clock::now();
+
+        const double milliseconds = chrono::duration<double, milli>(end - start).count();
+
+        cout << "Eta " << eta << " : " << milliseconds << " ms" << endl;
 
         // compute averages
         // (n, p) -> (it, recouvrement)
