@@ -473,7 +473,7 @@ void plot_time_panel(
 
     ostringstream title;
     title << method << " | eta = " << eta
-        << " | temps en secondes";
+        << " | temps en milisecondes";
     matplot::title(title.str());
 
     for (size_t row = 0; row < ps.size(); ++row)
@@ -482,7 +482,7 @@ void plot_time_panel(
         {
             ostringstream label;
             label << fixed << setprecision(3)
-                << colors[row][col] << " s";
+                << colors[row][col] << " ms";
 
             auto text = matplot::text(
                 static_cast<double>(col + 1),
