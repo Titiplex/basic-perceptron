@@ -413,6 +413,94 @@ void plot_panel(
     hold(off);
 }
 
+using Times = map<pair<int, int>, double>;
+
+void plot_time_panel(
+    const Times& times,
+    int position,
+    const std::string& method,
+    double eta,
+    const std::vector<int>& ns,
+    const std::vector<int>& ps,
+    double max_seconds)
+{
+    std::vector colors(
+        ps.size(), std::vector<double>(ns.size())
+    );
+
+    for (std::size_t row = 0; row < ps.size(); ++row)
+        for (std::size_t col = 0; col < ns.size(); ++col)
+            colors[row][col] = times.at({ns[col], ps[row]});
+
+    subplot(1, 2, position);
+
+    auto heatmap = matplot::heatmap(colors);
+    heatmap->always_hide_labels(true);
+
+    hold(on);
+
+    colormap({
+        {1.00, 0.98, 0.90},
+        {1.00, 0.85, 0.65},
+        {0.95, 0.60, 0.45}
+    });
+
+    caxis({0.0, max_seconds});
+    colorbar();
+
+    std::vector<double> x_ticks, y_ticks;
+    std::vector<std::string> x_labels, y_labels;
+
+    for (std::size_t col = 0; col < ns.size(); ++col)
+    {
+        x_ticks.push_back(static_cast<double>(col + 1));
+        x_labels.push_back(std::to_string(ns[col]));
+    }
+
+    for (std::size_t row = 0; row < ps.size(); ++row)
+    {
+        y_ticks.push_back(static_cast<double>(row + 1));
+        y_labels.push_back(std::to_string(ps[row]));
+    }
+
+    xticks(x_ticks);
+    yticks(y_ticks);
+    xticklabels(x_labels);
+    yticklabels(y_labels);
+
+    xlabel("N");
+    ylabel("P");
+
+    std::ostringstream title;
+    title << method << " | eta = " << eta
+        << " | temps en secondes";
+    matplot::title(title.str());
+
+    for (std::size_t row = 0; row < ps.size(); ++row)
+    {
+        for (std::size_t col = 0; col < ns.size(); ++col)
+        {
+            std::ostringstream label;
+            label << std::fixed << std::setprecision(3)
+                << colors[row][col] << " s";
+
+            auto text = matplot::text(
+                static_cast<double>(col + 1),
+                static_cast<double>(row + 1),
+                label.str()
+            );
+
+            text->alignment(labels::center);
+            text->font_size(9);
+        }
+    }
+
+    xlim({0.5, static_cast<double>(ns.size()) + 0.5});
+    ylim({0.5, static_cast<double>(ps.size()) + 0.5});
+
+    hold(off);
+}
+
 void plot_results(
     const Results& batch_averages,
     const Results& online_averages,
@@ -436,6 +524,57 @@ void plot_results(
 
     // to visualize in the app :
     // show();
+
+    cout << "Printed heatmaps for ETA " << eta << endl;
+}
+
+void plot_time_results(
+    const Times& batch_times,
+    const Times& online_times,
+    const double eta,
+    const vector<int>& ns,
+    const vector<int>& ps
+)
+{
+    if (ns.size() < 2 || ps.size() < 2)
+        throw std::invalid_argument(
+            "Ces heatmaps demandent au moins deux valeurs par axe."
+        );
+
+    double max_seconds = 0.0;
+
+    for (int n : ns)
+    {
+        for (int p : ps)
+        {
+            for (double t : {
+                     batch_times.at({n, p}),
+                     online_times.at({n, p})
+                 })
+            {
+                if (!std::isfinite(t) || t < 0.0)
+                    throw std::invalid_argument("Temps invalide.");
+
+                max_seconds = std::max(max_seconds, t);
+            }
+        }
+    }
+
+    if (max_seconds == 0.0) max_seconds = 1.0;
+
+    const auto fig = figure(true);
+    fig->width(1500);
+    fig->height(650);
+
+    plot_time_panel(batch_times, 0, "Batch", eta, ns, ps, max_seconds);
+    plot_time_panel(online_times, 1, "Online", eta, ns, ps, max_seconds);
+
+    std::filesystem::create_directories("plots/time");
+
+    std::ostringstream filename;
+    filename << "plots/time/time_eta_" << eta;
+
+    fig->save(filename.str() + ".png");
 }
 
 int main()
@@ -489,13 +628,13 @@ int main()
 
     for (vector<float> etas = {0.5, 0.25, 0.05}; float eta : etas)
     {
-        auto start = chrono::steady_clock::now();
-
         vector ns = {2, 10, 100, 500, 1000, 5000};
         vector ps = {10, 100, 200, 500, 1000};
 
         map<pair<int, int>, vector<Result>> online_results;
         map<pair<int, int>, vector<Result>> batch_results;
+        map<pair<int, int>, double> online_time_results;
+        map<pair<int, int>, double> batch_time_results;
 
         auto prof = Perceptron();
 
@@ -506,17 +645,27 @@ int main()
                 auto ds = create_prof_dataset(n, p, prof);
 
                 // ONLINE
+                auto start = chrono::steady_clock::now();
                 online_results.emplace(pair(n, p), learn_all(ds, n, prof, eta, Perceptron::ONLINE));
+                auto end = chrono::steady_clock::now();
+
+                online_time_results.emplace(
+                    pair(n, p),
+                    // convert to ms
+                    chrono::duration<double, milli>(end - start).count()
+                );
+
                 // BATCH
+                start = chrono::steady_clock::now();
                 batch_results.emplace(pair(n, p), learn_all(ds, n, prof, eta, Perceptron::BATCH));
+                end = chrono::steady_clock::now();
+
+                batch_time_results.emplace(
+                    pair(n, p),
+                    chrono::duration<double, milli>(end - start).count()
+                );
             }
         }
-
-        auto end = chrono::steady_clock::now();
-
-        const double milliseconds = chrono::duration<double, milli>(end - start).count();
-
-        cout << "Eta " << eta << " : " << milliseconds << " ms" << endl;
 
         // compute averages
         // (n, p) -> (it, recouvrement)
@@ -551,7 +700,10 @@ int main()
         }
 
         // generating plots
-        plot_results(batch_averages, online_averages, eta, ns, ps);
+        plot_results(batch_averages, online_averages, eta, ns, ps); //iterations and recouvrement
+
+        // running time
+        plot_time_results(batch_time_results, online_time_results, eta, ns, ps);
     }
 
 
