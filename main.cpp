@@ -11,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <filesystem>
 
 using namespace std;
 using namespace matplot;
@@ -425,7 +426,16 @@ void plot_results(
     plot_panel(batch_averages, 0, "Batch", eta, ns, ps);
     plot_panel(online_averages, 1, "Online", eta, ns, ps);
 
-    show();
+    std::filesystem::create_directories("plots");
+
+    std::ostringstream filename;
+    filename << "plots/resultats_eta_" << eta;
+
+    fig->save(filename.str() + ".png");
+    fig->save(filename.str() + ".pdf");
+
+    // to visualize in the app :
+    // show();
 }
 
 int main()
