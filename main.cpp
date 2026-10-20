@@ -19,7 +19,7 @@ using namespace matplot;
 
 int heaviside(const double x)
 {
-    return x > 0 ? 1 : 0;
+    return x < 0 ? -1 : 1;
 }
 
 double sum(const vector<double>& weights, const vector<int>& input)
@@ -61,7 +61,7 @@ public:
         BATCH
     };
 
-    vector<double> get_weights()
+    [[nodiscard]] const vector<double>& get_weights() const
     {
         return this->weights;
     }
@@ -136,7 +136,7 @@ public:
         return heaviside(sum(this->weights, input) + this->biais);
     }
 
-    bool verify()
+    [[nodiscard]] bool verify() const
     {
         // building output vector for learn data (correct version)
         vector<int> output_vector;
@@ -276,7 +276,7 @@ double recouvrement(const vector<double>& a, const vector<double>& b)
     return cos(ww / (sqrt(norm_a) * sqrt(norm_b)));
 }
 
-vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, Perceptron prof, const float eta,
+vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, const Perceptron& prof, const float eta,
                          Perceptron::LearningType type = Perceptron::ONLINE)
 {
     vector<thread> threads;
@@ -285,7 +285,7 @@ vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, Perc
     vector<Result> results(20);
     vector<exception_ptr> errors(20);
 
-    const auto prof_weights = prof.get_weights();
+    const auto& prof_weights = prof.get_weights();
 
     for (int i = 0; i < 20; i++)
     {
@@ -331,8 +331,16 @@ void plot_panel(
     int position,
     const string& method,
     double eta,
-    vector<int> ns,
-    vector<int> ps)
+    const vector<int>& ns,
+
+
+
+
+
+
+
+
+    const vector<int>& ps)
 {
     // color set to track R
     vector colors(
@@ -422,7 +430,7 @@ void plot_time_panel(
     double eta,
     const vector<int>& ns,
     const vector<int>& ps,
-    double max_seconds)
+    double max_milliseconds)
 {
     vector colors(
         ps.size(), vector<double>(ns.size())
@@ -445,7 +453,7 @@ void plot_time_panel(
         {0.95, 0.60, 0.45}
     });
 
-    caxis({0.0, max_seconds});
+    caxis({0.0, max_milliseconds});
     colorbar();
 
     vector<double> x_ticks, y_ticks;
@@ -473,7 +481,7 @@ void plot_time_panel(
 
     ostringstream title;
     title << method << " | eta = " << eta
-        << " | temps en milisecondes";
+        << " | temps en millisecondes";
     matplot::title(title.str());
 
     for (size_t row = 0; row < ps.size(); ++row)
@@ -541,7 +549,7 @@ void plot_time_results(
             "Ces heatmaps demandent au moins deux valeurs par axe."
         );
 
-    double max_seconds = 0.0;
+    double max_milliseconds = 0.0;
 
     for (int n : ns)
     {
@@ -555,19 +563,19 @@ void plot_time_results(
                 if (!isfinite(t) || t < 0.0)
                     throw invalid_argument("Temps invalide.");
 
-                max_seconds = std::max(max_seconds, t);
+                max_milliseconds = std::max(max_milliseconds, t);
             }
         }
     }
 
-    if (max_seconds == 0.0) max_seconds = 1.0;
+    if (max_milliseconds == 0.0) max_milliseconds = 1.0;
 
     const auto fig = figure(true);
     fig->width(1500);
     fig->height(650);
 
-    plot_time_panel(batch_times, 0, "Batch", eta, ns, ps, max_seconds);
-    plot_time_panel(online_times, 1, "Online", eta, ns, ps, max_seconds);
+    plot_time_panel(batch_times, 0, "Batch", eta, ns, ps, max_milliseconds);
+    plot_time_panel(online_times, 1, "Online", eta, ns, ps, max_milliseconds);
 
     filesystem::create_directories("plots/time");
 
@@ -585,9 +593,9 @@ int main()
 
     // testing AND
     const map<vector<int>, int> input_and = {
-        {{0, 0}, 0},
-        {{0, 1}, 0},
-        {{1, 0}, 0},
+        {{0, 0}, -1},
+        {{0, 1}, -1},
+        {{1, 0}, -1},
         {{1, 1}, 1},
     };
 
@@ -598,7 +606,7 @@ int main()
 
     // testing OR
     const map<vector<int>, int> input_or = {
-        {{0, 0}, 0},
+        {{0, 0}, -1},
         {{0, 1}, 1},
         {{1, 0}, 1},
         {{1, 1}, 1},
@@ -609,14 +617,14 @@ int main()
 
     //testing XOR
     const map<vector<int>, int> input_xor = {
-        {{0, 0}, 0},
+        {{0, 0}, -1},
         {{0, 1}, 1},
         {{1, 0}, 1},
-        {{1, 1}, 0},
+        {{1, 1}, -1},
     };
     Perceptron xor_(2, 0.5, 0.0, input_xor);
     xor_.learn(Perceptron::BATCH);
-    cout << xor_.output({0, 1}) << endl;
+    cout << xor_.output({0, 0}) << endl;
 
     // Exercice 1 avec perceptron professeur
     // voir la fonction create_prof_dataset
