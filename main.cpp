@@ -332,14 +332,6 @@ void plot_panel(
     const string& method,
     double eta,
     const vector<int>& ns,
-
-
-
-
-
-
-
-
     const vector<int>& ps)
 {
     // color set to track R
@@ -639,8 +631,12 @@ int main()
         vector ns = {2, 10, 100, 500, 1000, 5000};
         vector ps = {10, 100, 200, 500, 1000};
 
-        map<pair<int, int>, vector<Result>> online_results;
-        map<pair<int, int>, vector<Result>> batch_results;
+        constexpr int nb_tirages = 100;
+
+        // compute averages
+        // (n, p) -> (it, recouvrement)
+        Results online_averages;
+        Results batch_averages;
         map<pair<int, int>, double> online_time_results;
         map<pair<int, int>, double> batch_time_results;
 
@@ -650,60 +646,52 @@ int main()
         {
             for (auto p : ps)
             {
-                auto ds = create_prof_dataset(n, p, prof);
+                const auto key = pair(n, p);
+                auto& [it_o, reco_o] = online_averages[key];
+                auto& [it_b, reco_b] = batch_averages[key];
 
-                // ONLINE
-                auto start = chrono::steady_clock::now();
-                online_results.emplace(pair(n, p), learn_all(ds, n, prof, eta, Perceptron::ONLINE));
-                auto end = chrono::steady_clock::now();
-
-                online_time_results.emplace(
-                    pair(n, p),
-                    // convert to ms
-                    chrono::duration<double, milli>(end - start).count()
-                );
-
-                // BATCH
-                start = chrono::steady_clock::now();
-                batch_results.emplace(pair(n, p), learn_all(ds, n, prof, eta, Perceptron::BATCH));
-                end = chrono::steady_clock::now();
-
-                batch_time_results.emplace(
-                    pair(n, p),
-                    chrono::duration<double, milli>(end - start).count()
-                );
-            }
-        }
-
-        // compute averages
-        // (n, p) -> (it, recouvrement)
-        map<pair<int, int>, pair<double, double>> online_averages;
-        map<pair<int, int>, pair<double, double>> batch_averages;
-
-        for (auto n : ns)
-        {
-            for (auto p : ps)
-            {
-                double reco_o = 0;
-                double it_o = 0;
-                double reco_b = 0;
-                double it_b = 0;
-
-                for (const auto& r : online_results[pair(n, p)])
+                for (int tirage = 0; tirage < nb_tirages; ++tirage)
                 {
-                    reco_o += r.recouvrement;
-                    it_o += r.iterations;
+                    auto ds = create_prof_dataset(n, p, prof);
+
+                    // ONLINE
+                    auto start = chrono::steady_clock::now();
+                    const auto online = learn_all(ds, n, prof, eta, Perceptron::ONLINE);
+                    auto end = chrono::steady_clock::now();
+
+                    online_time_results[key] +=
+                        // convert to ms
+                        chrono::duration<double, milli>(end - start).count() / nb_tirages;
+
+                    for (const auto& r : online)
+                    {
+                        if (r.iterations == static_cast<size_t>(-1))
+                            throw runtime_error("Non-convergence en online.");
+
+                        it_o += r.iterations;
+                        reco_o += r.recouvrement;
+                    }
+
+                    // BATCH
+                    start = chrono::steady_clock::now();
+                    const auto batch = learn_all(ds, n, prof, eta, Perceptron::BATCH);
+                    end = chrono::steady_clock::now();
+
+                    batch_time_results[key] += chrono::duration<double, milli>(end - start).count() / nb_tirages;
+                    for (const auto& r : batch)
+                    {
+                        if (r.iterations == static_cast<size_t>(-1))
+                            throw runtime_error("Non-convergence en batch.");
+
+                        it_b += r.iterations;
+                        reco_b += r.recouvrement;
+                    }
                 }
-
-                online_averages.emplace(pair(n, p), pair(it_o / 20, reco_o / 20));
-
-                for (const auto& r : batch_results[pair(n, p)])
-                {
-                    reco_b += r.recouvrement;
-                    it_b += r.iterations;
-                }
-
-                batch_averages.emplace(pair(n, p), pair(it_b / 20, reco_b / 20));
+                constexpr double total = nb_tirages * 20.0;
+                it_o /= total;
+                reco_o /= total;
+                it_b /= total;
+                reco_b /= total;
             }
         }
 
