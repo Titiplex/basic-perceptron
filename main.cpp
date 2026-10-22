@@ -13,6 +13,7 @@
 #include <utility>
 #include <filesystem>
 #include <chrono>
+#include <limits>
 
 using namespace std;
 using namespace matplot;
@@ -650,6 +651,10 @@ int main()
                 auto& [it_o, reco_o] = online_averages[key];
                 auto& [it_b, reco_b] = batch_averages[key];
 
+                // failures to converge before max epoch reached
+                int fail_o = 0;
+                int fail_b = 0;
+
                 for (int tirage = 0; tirage < nb_tirages; ++tirage)
                 {
                     auto ds = create_prof_dataset(n, p, prof);
@@ -666,7 +671,10 @@ int main()
                     for (const auto& r : online)
                     {
                         if (r.iterations == static_cast<size_t>(-1))
-                            throw runtime_error("Non-convergence en online.");
+                        {
+                            ++fail_o;
+                            continue;
+                        }
 
                         it_o += r.iterations;
                         reco_o += r.recouvrement;
@@ -681,17 +689,35 @@ int main()
                     for (const auto& r : batch)
                     {
                         if (r.iterations == static_cast<size_t>(-1))
-                            throw runtime_error("Non-convergence en batch.");
+                        {
+                            ++fail_b;
+                            continue;
+                        }
 
                         it_b += r.iterations;
                         reco_b += r.recouvrement;
                     }
                 }
                 constexpr double total = nb_tirages * 20.0;
-                it_o /= total;
-                reco_o /= total;
-                it_b /= total;
-                reco_b /= total;
+
+                const double succes_o = total - fail_o;
+                const double succes_b = total - fail_b;
+
+                // no node has converged
+                constexpr double nan = numeric_limits<double>::quiet_NaN();
+
+                it_o = succes_o > 0 ? it_o / succes_o : nan;
+                reco_o = succes_o > 0 ? reco_o / succes_o : nan;
+
+                it_b = succes_b > 0 ? it_b / succes_b : nan;
+                reco_b = succes_b > 0 ? reco_b / succes_b : nan;
+
+                cout << "eta=" << eta << " N=" << n << " P=" << p
+                    << " | echecs online : " << fail_o << "/" << total
+                    << " (" << 100.0 * fail_o / total << "%)"
+                    << " | echecs batch : " << fail_b << "/" << total
+                    << " (" << 100.0 * fail_b / total << "%)"
+                    << endl;
             }
         }
 
