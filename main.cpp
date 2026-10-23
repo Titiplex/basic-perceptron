@@ -17,6 +17,9 @@
 #ifdef HAS_CUDA
 #include <cuda_runtime_api.h>
 #endif
+#ifdef HAS_CUDA_KERNELS
+bool test_gpu();
+#endif
 
 using namespace std;
 using namespace matplot;
@@ -621,6 +624,16 @@ int main()
     cout << "CUDA available : "
         << (use_gpu ? "oui" : "non")
         << endl;
+#ifdef HAS_CUDA_KERNELS
+    if (use_gpu)
+    {
+        const bool test_ok = test_gpu();
+
+        cout << "Test d'execution GPU : "
+            << (test_ok ? "OK" : "ECHEC")
+            << endl;
+    }
+#endif
 
     // Exercice 0 avec le perceptron basique
 

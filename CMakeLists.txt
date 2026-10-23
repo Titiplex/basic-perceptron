@@ -46,6 +46,9 @@ if(CUDAToolkit_FOUND)
     if(CMAKE_CUDA_COMPILER)
         enable_language(CUDA)
 
+        target_sources(TP1 PRIVATE gpu.cu)
+        target_compile_definitions(TP1 PRIVATE HAS_CUDA_KERNELS=1)
+
         set_target_properties(TP1 PROPERTIES
                 CUDA_STANDARD 17
                 CUDA_STANDARD_REQUIRED ON
