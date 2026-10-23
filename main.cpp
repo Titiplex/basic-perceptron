@@ -19,7 +19,7 @@
 #ifdef HAS_CUDA_KERNELS
 bool test_gpu();
 
-void learn_batch_gpu(
+void learn_gpu(
     const std::vector<double>& entries,
     const std::vector<int>& targets,
     std::vector<double>& weights,
@@ -27,7 +27,8 @@ void learn_batch_gpu(
     std::vector<std::size_t>& iterations,
     int nb_entrees,
     float eta,
-    std::size_t max_epochs);
+    std::size_t max_epochs,
+    bool online);
 #endif
 
 using namespace std;
@@ -353,15 +354,16 @@ vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, cons
     // each student initiated with a biais of 0.0
     vector biases(nb_eleves, 0.0);
 #ifdef HAS_CUDA_KERNELS
-    if (use_gpu && type == Perceptron::BATCH)
+    if (use_gpu)
     {
         try
         {
             vector<size_t> iterations;
 
-            learn_batch_gpu(
+            learn_gpu(
                 flat_entries, targets, flat_weights, biases,
-                iterations, nb_entrees, eta, 1000
+                iterations, nb_entrees, eta, 1000,
+                type == Perceptron::ONLINE
             );
 
             for (int i = 0; i < nb_eleves; ++i)
@@ -820,7 +822,7 @@ int main()
 
                     // ONLINE
                     auto start = chrono::steady_clock::now();
-                    const auto online = learn_all(ds, n, prof, eta, Perceptron::ONLINE);
+                    const auto online = learn_all(ds, n, prof, eta, Perceptron::ONLINE, use_gpu);
                     auto end = chrono::steady_clock::now();
 
                     online_time_results[key] +=

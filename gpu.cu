@@ -126,7 +126,87 @@ __global__ void update_weights_batch(
         biais[eleve] += delta;
 }
 
-void learn_batch_gpu(
+__global__ void update_weights_online(
+    const double* entries,
+    const int* targets,
+    double* weights,
+    double* biases,
+    const size_t* iterations,
+    float eta,
+    int nb_entrees,
+    int nb_exemples,
+    int nb_eleves)
+{
+    const int eleve = static_cast<int>(blockIdx.x);
+    const unsigned int tid = threadIdx.x;
+
+    if (eleve >= nb_eleves
+        || iterations[eleve] != static_cast<size_t>(-1))
+        return;
+
+    extern __shared__ double scratch[];
+
+    double* student_weights = weights
+        + static_cast<size_t>(eleve) * nb_entrees;
+
+    for (int exemple = 0; exemple < nb_exemples; ++exemple)
+    {
+        const double* input = entries
+            + static_cast<size_t>(exemple) * nb_entrees;
+
+        double sum = 0.0;
+
+        for (size_t i = tid;
+             i < static_cast<size_t>(nb_entrees);
+             i += blockDim.x)
+        {
+            sum += student_weights[i] * input[i];
+        }
+
+        scratch[tid] = sum;
+        __syncthreads();
+
+        for (unsigned int stride = blockDim.x / 2;
+             stride > 0; stride /= 2)
+        {
+            if (tid < stride)
+                scratch[tid] += scratch[tid + stride];
+
+            __syncthreads();
+        }
+
+        if (tid == 0)
+        {
+            const int prediction =
+                scratch[0] + biases[eleve] < 0.0 ? -1 : 1;
+
+            scratch[blockDim.x] =
+                eta * static_cast<float>(
+                    targets[exemple] - prediction
+                );
+        }
+
+        __syncthreads();
+
+        const double correction = scratch[blockDim.x];
+
+        if (correction != 0.0)
+        {
+            for (size_t i = tid;
+                 i < static_cast<size_t>(nb_entrees);
+                 i += blockDim.x)
+            {
+                student_weights[i] += correction * input[i];
+            }
+
+            if (tid == 0)
+                biases[eleve] += correction;
+        }
+        __syncthreads();
+    }
+}
+
+void learn_gpu(
     const vector<double>& entries,
     const vector<int>& targets,
     vector<double>& weights,
@@ -134,7 +214,8 @@ void learn_batch_gpu(
     vector<size_t>& iterations,
     int nb_entrees,
     float eta,
-    size_t max_epochs)
+    size_t max_epochs,
+    bool online)
 {
     const size_t int_max =
         numeric_limits<int>::max();
@@ -164,6 +245,7 @@ void learn_batch_gpu(
     DeviceBuffer<double> gpu_weights(weights.size());
     DeviceBuffer<double> gpu_biases(biases.size());
     DeviceBuffer<int> gpu_predictions(prediction_count);
+    DeviceBuffer<size_t> gpu_iterations(s);
 
     check_cuda(cudaMemcpy(gpu_entries.data, entries.data(),
                           entries.size() * sizeof(double), cudaMemcpyHostToDevice),
@@ -222,11 +304,58 @@ void learn_batch_gpu(
             break;
 
         // student converged stays null
-        update_weights_batch<<<update_blocks, threads>>>(
-            gpu_entries.data, gpu_targets.data, gpu_predictions.data,
-            gpu_weights.data, gpu_biases.data, eta,
-            nb_entrees, nb_exemples, nb_eleves);
-        check_cuda(cudaGetLastError(), "Launching update");
+        if (online)
+        {
+            check_cuda(
+                cudaMemcpy(
+                    gpu_iterations.data,
+                    iterations.data(),
+                    s * sizeof(size_t),
+                    cudaMemcpyHostToDevice
+                ),
+                "Copy of online convergence"
+            );
+
+            update_weights_online<<<
+                nb_eleves,
+                threads,
+                (threads + 1) * sizeof(double)
+                >>>(
+                    gpu_entries.data,
+                    gpu_targets.data,
+                    gpu_weights.data,
+                    gpu_biases.data,
+                    gpu_iterations.data,
+                    eta,
+                    nb_entrees,
+                    nb_exemples,
+                    nb_eleves
+                );
+
+            check_cuda(
+                cudaGetLastError(),
+                "Launching online update"
+            );
+        }
+        else
+        {
+            update_weights_batch<<<update_blocks, threads>>>(
+                gpu_entries.data,
+                gpu_targets.data,
+                gpu_predictions.data,
+                gpu_weights.data,
+                gpu_biases.data,
+                eta,
+                nb_entrees,
+                nb_exemples,
+                nb_eleves
+            );
+
+            check_cuda(
+                cudaGetLastError(),
+                "Launching batch update"
+            );
+        }
     }
 
     check_cuda(cudaMemcpy(weights.data(), gpu_weights.data,
