@@ -14,6 +14,9 @@
 #include <filesystem>
 #include <chrono>
 #include <limits>
+#ifdef HAS_CUDA
+#include <cuda_runtime_api.h>
+#endif
 
 using namespace std;
 using namespace matplot;
@@ -578,8 +581,47 @@ void plot_time_results(
     fig->save(filename.str() + ".png");
 }
 
+bool gpu_available()
+{
+#ifdef HAS_CUDA
+    int nombre_gpu = 0;
+
+    if (const auto status = cudaGetDeviceCount(&nombre_gpu);
+        status != cudaSuccess)
+    {
+        cout << "CUDA unavailable : "
+            << cudaGetErrorString(status) << endl;
+        return false;
+    }
+
+    if (nombre_gpu == 0)
+        return false;
+
+    cudaDeviceProp proprietes{};
+
+    if (const auto info_status = cudaGetDeviceProperties(&proprietes, 0);
+        info_status != cudaSuccess)
+    {
+        cout << "Cannot read GPU : "
+            << cudaGetErrorString(info_status) << endl;
+        return false;
+    }
+
+    cout << "GPU detected : " << proprietes.name << endl;
+    return true;
+#else
+    return false;
+#endif
+}
+
 int main()
 {
+    const bool use_gpu = gpu_available();
+
+    cout << "CUDA available : "
+        << (use_gpu ? "oui" : "non")
+        << endl;
+
     // Exercice 0 avec le perceptron basique
 
     cout << "Question 0" << endl;
