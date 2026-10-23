@@ -75,3 +75,51 @@ __global__ void predictions_batch(
     predictions[index] =
         sum + biais[eleve] < 0.0 ? -1 : 1;
 }
+
+__global__ void update_weights_batch(
+    const double* entries,
+    const int* targets,
+    const int* predictions,
+    double* weights,
+    double* biais,
+    float eta,
+    int nb_entrees,
+    int nb_exemples,
+    int nb_eleves)
+{
+    const int nb_parametres = nb_entrees + 1;
+    const int index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (index >= nb_eleves * nb_parametres)
+        return;
+
+    const int eleve = index / nb_parametres;
+    const int parametre = index % nb_parametres;
+
+    double delta = 0.0;
+
+    for (int exemple = 0; exemple < nb_exemples; ++exemple)
+    {
+        const int prediction =
+            predictions[eleve * nb_exemples + exemple];
+
+        const float correction =
+            eta * static_cast<float>(targets[exemple] - prediction);
+
+        if (parametre < nb_entrees)
+        {
+            delta += correction * static_cast<float>(
+                entries[exemple * nb_entrees + parametre]
+            );
+        }
+        else
+        {
+            delta += correction;
+        }
+    }
+
+    if (parametre < nb_entrees)
+        weights[eleve * nb_entrees + parametre] += delta;
+    else
+        biais[eleve] += delta;
+}

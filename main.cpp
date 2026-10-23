@@ -19,6 +19,16 @@
 #endif
 #ifdef HAS_CUDA_KERNELS
 bool test_gpu();
+
+void learn_batch_gpu(
+    const std::vector<double>& entries,
+    const std::vector<int>& targets,
+    std::vector<double>& weights,
+    std::vector<double>& biases,
+    std::vector<std::size_t>& iterations,
+    int nb_entrees,
+    float eta,
+    std::size_t max_epochs);
 #endif
 
 using namespace std;
@@ -284,7 +294,7 @@ double recouvrement(const vector<double>& a, const vector<double>& b)
 }
 
 vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, const Perceptron& prof, const float eta,
-                         Perceptron::LearningType type = Perceptron::ONLINE)
+                         Perceptron::LearningType type = Perceptron::ONLINE, bool use_gpu = false)
 {
     vector<thread> threads;
     threads.reserve(20);
@@ -294,13 +304,99 @@ vector<Result> learn_all(const map<vector<int>, int>& dataset, const int n, cons
 
     const auto& prof_weights = prof.get_weights();
 
+    vector<vector<double>> initial_weights(20);
+
+    for (int i = 0; i < 20; ++i)
+    {
+        Perceptron initial(n + 1, eta, 0.0);
+        initial_weights[i] = initial.get_weights();
+    }
+
+    const int nb_entrees = n + 1;
+    const int nb_exemples = static_cast<int>(dataset.size());
+    const int nb_eleves = static_cast<int>(initial_weights.size());
+
+    vector<double> flat_entries;
+    vector<int> targets;
+
+    flat_entries.reserve(
+        static_cast<size_t>(nb_exemples) * nb_entrees
+    );
+    targets.reserve(nb_exemples);
+
+    for (const auto& [input, target] : dataset)
+    {
+        flat_entries.insert(
+            flat_entries.end(),
+            input.begin(),
+            input.end()
+        );
+
+        targets.push_back(target);
+    }
+
+    // weights of each student
+    vector<double> flat_weights;
+
+    flat_weights.reserve(
+        static_cast<size_t>(nb_eleves) * nb_entrees
+    );
+
+    for (const auto& weights : initial_weights)
+    {
+        flat_weights.insert(
+            flat_weights.end(),
+            weights.begin(),
+            weights.end()
+        );
+    }
+
+    // each student initiated with a biais of 0.0
+    vector biases(nb_eleves, 0.0);
+#ifdef HAS_CUDA_KERNELS
+    if (use_gpu && type == Perceptron::BATCH)
+    {
+        try
+        {
+            vector<size_t> iterations;
+
+            learn_batch_gpu(
+                flat_entries, targets, flat_weights, biases,
+                iterations, nb_entrees, eta, 1000
+            );
+
+            for (int i = 0; i < nb_eleves; ++i)
+            {
+                vector<double> weights(
+                    flat_weights.begin() + i * nb_entrees,
+                    flat_weights.begin() + (i + 1) * nb_entrees
+                );
+
+                results[i] = {
+                    Perceptron(weights, eta, biases[i], dataset),
+                    iterations[i],
+                    recouvrement(prof_weights, weights)
+                };
+            }
+
+            return results;
+        }
+        catch (const exception& error)
+        {
+            cerr << "CUDA : " << error.what()
+                << " -- retour a l'apprentissage CPU."
+                << endl;
+        }
+    }
+#endif
+
     for (int i = 0; i < 20; i++)
     {
         threads.emplace_back([&, i, n, eta, type]()
         {
             try
             {
-                auto eleve = Perceptron(n + 1, eta, 0.0, dataset);
+                auto eleve = Perceptron(initial_weights[i], eta, 0.0, dataset);
                 // ReSharper disable once CppDFAUnusedValue
                 // ReSharper disable once CppDFAUnreadVariable
                 const size_t it = eleve.learn(type);
@@ -737,7 +833,7 @@ int main()
 
                     // BATCH
                     start = chrono::steady_clock::now();
-                    const auto batch = learn_all(ds, n, prof, eta, Perceptron::BATCH);
+                    const auto batch = learn_all(ds, n, prof, eta, Perceptron::BATCH, true);
                     end = chrono::steady_clock::now();
 
                     batch_time_results[key] += chrono::duration<double, milli>(end - start).count() / nb_tirages;
