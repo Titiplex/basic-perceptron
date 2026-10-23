@@ -38,6 +38,23 @@ if(CUDAToolkit_FOUND)
     target_compile_definitions(TP1 PRIVATE HAS_CUDA=1)
 
     message(STATUS "CUDA Toolkit detecte : ${CUDAToolkit_VERSION}")
+
+    # Spécificités du compilateur CUDA
+    include(CheckLanguage)
+    check_language(CUDA)
+
+    if(CMAKE_CUDA_COMPILER)
+        enable_language(CUDA)
+
+        set_target_properties(TP1 PROPERTIES
+                CUDA_STANDARD 17
+                CUDA_STANDARD_REQUIRED ON
+        )
+
+        message(STATUS "Compilateur CUDA disponible : ${CMAKE_CUDA_COMPILER}")
+    else()
+        message(STATUS "Compilation des fichiers GPU indisponible")
+    endif()
 else()
     message(STATUS "CUDA Toolkit absent : compilation CPU")
 endif()
