@@ -20,6 +20,10 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(matplotplusplus)
 
+if (MSVC)
+    target_compile_options(matplot PRIVATE /wd4834)
+endif ()
+
 find_package(Threads REQUIRED)
 
 add_executable(TP1 main.cpp)
@@ -33,7 +37,7 @@ target_link_libraries(TP1
 # Support CUDA optionnel.
 find_package(CUDAToolkit QUIET)
 
-if(CUDAToolkit_FOUND)
+if (CUDAToolkit_FOUND)
     target_link_libraries(TP1 PRIVATE CUDA::cudart)
     target_compile_definitions(TP1 PRIVATE HAS_CUDA=1)
 
@@ -43,7 +47,7 @@ if(CUDAToolkit_FOUND)
     include(CheckLanguage)
     check_language(CUDA)
 
-    if(CMAKE_CUDA_COMPILER)
+    if (CMAKE_CUDA_COMPILER)
         enable_language(CUDA)
 
         target_sources(TP1 PRIVATE gpu.cu)
@@ -55,9 +59,9 @@ if(CUDAToolkit_FOUND)
         )
 
         message(STATUS "Compilateur CUDA disponible : ${CMAKE_CUDA_COMPILER}")
-    else()
+    else ()
         message(STATUS "Compilation des fichiers GPU indisponible")
-    endif()
-else()
+    endif ()
+else ()
     message(STATUS "CUDA Toolkit absent : compilation CPU")
-endif()
+endif ()
