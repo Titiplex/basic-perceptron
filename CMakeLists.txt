@@ -34,34 +34,25 @@ target_link_libraries(TP1
         Threads::Threads
 )
 
-# Support CUDA optionnel.
-find_package(CUDAToolkit QUIET)
+# CUDA obligatoire pour compiler et tester les kernels.
+find_package(CUDAToolkit REQUIRED)
+enable_language(CUDA)
 
-if (CUDAToolkit_FOUND)
-    target_link_libraries(TP1 PRIVATE CUDA::cudart)
-    target_compile_definitions(TP1 PRIVATE HAS_CUDA=1)
+target_sources(TP1 PRIVATE gpu.cu)
 
-    message(STATUS "CUDA Toolkit detecte : ${CUDAToolkit_VERSION}")
+target_link_libraries(TP1 PRIVATE CUDA::cudart)
 
-    # Spécificités du compilateur CUDA
-    include(CheckLanguage)
-    check_language(CUDA)
+target_compile_definitions(TP1 PRIVATE
+        HAS_CUDA=1
+        HAS_CUDA_KERNELS=1
+)
 
-    if (CMAKE_CUDA_COMPILER)
-        enable_language(CUDA)
+set_target_properties(TP1 PROPERTIES
+        CUDA_STANDARD 17
+        CUDA_STANDARD_REQUIRED ON
+        CUDA_EXTENSIONS OFF
+        CUDA_ARCHITECTURES 89
+)
 
-        target_sources(TP1 PRIVATE gpu.cu)
-        target_compile_definitions(TP1 PRIVATE HAS_CUDA_KERNELS=1)
-
-        set_target_properties(TP1 PROPERTIES
-                CUDA_STANDARD 17
-                CUDA_STANDARD_REQUIRED ON
-        )
-
-        message(STATUS "Compilateur CUDA disponible : ${CMAKE_CUDA_COMPILER}")
-    else ()
-        message(STATUS "Compilation des fichiers GPU indisponible")
-    endif ()
-else ()
-    message(STATUS "CUDA Toolkit absent : compilation CPU")
-endif ()
+message(STATUS "CUDA Toolkit : ${CUDAToolkit_VERSION}")
+message(STATUS "Compilateur CUDA : ${CMAKE_CUDA_COMPILER}")

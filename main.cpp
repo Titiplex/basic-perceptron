@@ -5,7 +5,6 @@
 #include <vector>
 #include <stdexcept>
 #include <thread>
-#include <cmath>
 #include <matplot/matplot.h>
 #include <iomanip>
 #include <sstream>
@@ -718,17 +717,26 @@ int main()
     const bool use_gpu = gpu_available();
 
     cout << "CUDA available : "
-        << (use_gpu ? "oui" : "non")
+        << (use_gpu ? "yes" : "no")
         << endl;
 #ifdef HAS_CUDA_KERNELS
+    cout << "HAS_CUDA_KERNELS : defined" << endl;
+
     if (use_gpu)
     {
         const bool test_ok = test_gpu();
 
-        cout << "Test d'execution GPU : "
-            << (test_ok ? "OK" : "ECHEC")
+        cout << "Testing GPU execution : "
+            << (test_ok ? "OK" : "FAILURE")
             << endl;
     }
+    else
+    {
+        cout << "GPU Test ignored : no GPU CUDA available" << endl;
+    }
+#else
+    cout << "Test GPU absent : HAS_CUDA_KERNELS non defini"
+        << endl;
 #endif
 
     // Exercice 0 avec le perceptron basique
