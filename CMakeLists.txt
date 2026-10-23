@@ -29,3 +29,15 @@ target_link_libraries(TP1
         matplot
         Threads::Threads
 )
+
+# Support CUDA optionnel.
+find_package(CUDAToolkit QUIET)
+
+if(CUDAToolkit_FOUND)
+    target_link_libraries(TP1 PRIVATE CUDA::cudart)
+    target_compile_definitions(TP1 PRIVATE HAS_CUDA=1)
+
+    message(STATUS "CUDA Toolkit detecte : ${CUDAToolkit_VERSION}")
+else()
+    message(STATUS "CUDA Toolkit absent : compilation CPU")
+endif()
